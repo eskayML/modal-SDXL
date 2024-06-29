@@ -17,7 +17,7 @@
 
 import io
 from pathlib import Path
-
+from pydantic import BaseModel
 from modal import (
     App,
     Image,
@@ -52,6 +52,14 @@ sdxl_image = (
         "safetensors==0.4.2",
     )
 )
+
+
+class InferenceRequest(BaseModel):
+    prompt: str
+    n_steps: int = 24
+    high_noise_frac: float = 0.8
+
+
 
 app = App("stable-diffusion-xl")
 
@@ -148,13 +156,11 @@ class Model:
             prompt, n_steps=n_steps, high_noise_frac=high_noise_frac
         ).getvalue()
 
-    @web_endpoint(docs=True)
-    def web_inference(
-        self, prompt: str, n_steps: int = 24, high_noise_frac: float = 0.8
-    ):
+    @web_endpoint(method='POST', docs=True)
+    async def web_inference(self, request: InferenceRequest):
         return Response(
             content=self._inference(
-                prompt, n_steps=n_steps, high_noise_frac=high_noise_frac
+                request.prompt, n_steps=request.n_steps, high_noise_frac=request.high_noise_frac
             ).getvalue(),
             media_type="image/jpeg",
         )
@@ -190,10 +196,6 @@ def main(prompt: str = "Unicorns and leprechauns sign a peace treaty"):
 # Because the `web_endpoint` decorator on our `web_inference` function has the `docs` flag set to `True`,
 # we also get interactive documentation for our endpoint at `/docs`.
 
-frontend_path = Path(__file__).parent / "frontend"
-
-web_image = Image.debian_slim().pip_install("jinja2")
-
 
 @app.function(
     image=web_image,
@@ -203,28 +205,14 @@ web_image = Image.debian_slim().pip_install("jinja2")
 @asgi_app()
 def ui():
     import fastapi.staticfiles
-    from fastapi import FastAPI, Request
+    from fastapi import FastAPI, Request,Response
     from fastapi.templating import Jinja2Templates
 
     web_app = FastAPI()
-    templates = Jinja2Templates(directory="/assets")
 
     @web_app.post("/")
     async def read_root(request: Request):
-        return templates.TemplateResponse(
-            "index.html",
-            {
-                "request": request,
-                "inference_url": Model.web_inference.web_url,
-                "model_name": "Stable Diffusion XL",
-                "default_prompt": "A cinematic shot of a baby raccoon wearing an intricate italian priest robe.",
-            },
-        )
-
-    web_app.mount(
-        "/static",
-        fastapi.staticfiles.StaticFiles(directory="/assets"),
-        name="static",
-    )
-
-    return web_app
+        data = await request.json()
+        print(data)
+        inference_request = InferenceRequest(**data)
+        return await Model().web_inference(inference_request)
