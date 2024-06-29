@@ -18,6 +18,7 @@
 import io
 from pathlib import Path
 from pydantic import BaseModel
+from fastapi.responses import StreamingResponse
 from modal import (
     App,
     Image,
@@ -158,7 +159,7 @@ class Model:
 
     @web_endpoint(method='POST', docs=True)
     async def web_inference(self, request: InferenceRequest):
-        return Response(
+        return StreamingResponse(
             content=self._inference(
                 request.prompt, n_steps=request.n_steps, high_noise_frac=request.high_noise_frac
             ).getvalue(),
@@ -198,12 +199,11 @@ def main(prompt: str = "Unicorns and leprechauns sign a peace treaty"):
 
 
 @app.function(
-    image=web_image,
-    mounts=[Mount.from_local_dir(frontend_path, remote_path="/assets")],
-    allow_concurrent_inputs=20,
+    allow_concurrent_inputs=30,
 )
+
 @asgi_app()
-def ui():
+def backend():
     import fastapi.staticfiles
     from fastapi import FastAPI, Request,Response
     from fastapi.templating import Jinja2Templates
@@ -216,3 +216,5 @@ def ui():
         print(data)
         inference_request = InferenceRequest(**data)
         return await Model().web_inference(inference_request)
+
+
