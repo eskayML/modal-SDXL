@@ -140,7 +140,7 @@ def main(prompt: str = "Unicorns and leprechauns sign a peace treaty"):
         f.write(image_bytes)
 
 @app.function(
-    allow_concurrent_inputs=20,
+    allow_concurrent_inputs=30,
 )
 @asgi_app()
 def backend():
